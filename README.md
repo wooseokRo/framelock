@@ -1,6 +1,6 @@
 # framepin
 
-[![PyPI](https://img.shields.io/pypi/v/framepin)](https://pypi.org/project/framepin/)
+[![tests](https://github.com/boogy-ro/framepin/actions/workflows/ci.yml/badge.svg)](https://github.com/boogy-ro/framepin/actions/workflows/ci.yml) [![PyPI](https://img.shields.io/pypi/v/framepin)](https://pypi.org/project/framepin/)
 
 **A lockfile for your video/sequence-ML datasets and experiments — reproduce any run without copying a single frame.**
 
