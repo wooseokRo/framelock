@@ -1,6 +1,6 @@
-"""The on-disk store: a ``.framelock/`` directory of manifests and runs.
+"""The on-disk store: a ``.framepin/`` directory of manifests and runs.
 
-Everything framelock persists is plain JSON under ``.framelock/`` so it commits
+Everything framepin persists is plain JSON under ``.framepin/`` so it commits
 cleanly to git and is trivially inspectable. No database, no server.
 """
 
@@ -13,7 +13,7 @@ from typing import Optional
 from . import hashing
 from .manifest import Manifest, dumps as manifest_dumps, loads as manifest_loads
 
-STORE_DIR = ".framelock"
+STORE_DIR = ".framepin"
 
 
 class RepoError(Exception):
@@ -21,7 +21,7 @@ class RepoError(Exception):
 
 
 def find_repo(start: str = ".") -> Optional[str]:
-    """Walk upward from ``start`` looking for a ``.framelock`` directory."""
+    """Walk upward from ``start`` looking for a ``.framepin`` directory."""
     cur = os.path.abspath(start)
     while True:
         if os.path.isdir(os.path.join(cur, STORE_DIR)):
@@ -33,7 +33,7 @@ def find_repo(start: str = ".") -> Optional[str]:
 
 
 class Repo:
-    """A framelock store rooted at a project directory."""
+    """A framepin store rooted at a project directory."""
 
     def __init__(self, root: str):
         self.root = os.path.abspath(root)
@@ -63,7 +63,7 @@ class Repo:
         found = find_repo(start)
         if found is None:
             raise RepoError(
-                "no .framelock store found (run `framelock init` first)"
+                "no .framepin store found (run `framepin init` first)"
             )
         return cls(found)
 

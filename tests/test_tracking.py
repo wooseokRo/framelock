@@ -2,9 +2,9 @@ import os
 import tempfile
 import unittest
 
-import framelock
-from framelock.repo import Repo
-from framelock.tracking import compare_runs
+import framepin
+from framepin.repo import Repo
+from framepin.tracking import compare_runs
 
 
 def _write(root, rel, data: bytes):
@@ -19,7 +19,7 @@ class TestTracking(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             _write(d, "data/a.mp4", b"aaa")
             repo = Repo.init(d)
-            with framelock.track(name="exp1", params={"lr": 0.01}, repo=repo) as run:
+            with framepin.track(name="exp1", params={"lr": 0.01}, repo=repo) as run:
                 root = run.use_dataset(os.path.join(d, "data"))
                 run.log_metric("val_loss", 0.5)
             # run file exists and links the dataset version
@@ -36,7 +36,7 @@ class TestTracking(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             repo = Repo.init(d)
             try:
-                with framelock.track(name="boom", repo=repo) as run:
+                with framepin.track(name="boom", repo=repo) as run:
                     rid = run.id
                     raise ValueError("training exploded")
             except ValueError:
@@ -47,7 +47,7 @@ class TestTracking(unittest.TestCase):
     def test_git_commit_graceful_without_repo(self):
         with tempfile.TemporaryDirectory() as d:
             repo = Repo.init(d)
-            with framelock.track(repo=repo) as run:
+            with framepin.track(repo=repo) as run:
                 run.log_metric("x", 1)
             loaded = repo.load_run(run.id)
             # No git repo at a bare temp dir -> empty string, no crash.
@@ -58,9 +58,9 @@ class TestTracking(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             _write(d, "data/a.mp4", b"aaa")
             repo = Repo.init(d)
-            man = framelock.snapshot(os.path.join(d, "data"))
+            man = framepin.snapshot(os.path.join(d, "data"))
             repo.save_manifest(man)
-            with framelock.track(repo=repo) as run:
+            with framepin.track(repo=repo) as run:
                 root = run.use_dataset(man.short)  # short prefix ref
             self.assertEqual(root, man.root)
 

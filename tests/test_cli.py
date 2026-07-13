@@ -4,9 +4,9 @@ import os
 import tempfile
 import unittest
 
-import framelock
-from framelock.cli import main
-from framelock.repo import Repo
+import framepin
+from framepin.cli import main
+from framepin.repo import Repo
 
 
 def _write(root, rel, data: bytes):
@@ -41,7 +41,7 @@ class TestCLI(unittest.TestCase):
 
             code, out = _run(["init"])
             self.assertEqual(code, 0)
-            self.assertTrue(os.path.isdir(os.path.join(d, ".framelock")))
+            self.assertTrue(os.path.isdir(os.path.join(d, ".framepin")))
 
             code, out = _run(["snapshot", "data"])
             self.assertEqual(code, 0)
@@ -70,13 +70,13 @@ class TestCLI(unittest.TestCase):
             repo = Repo.init(d)
 
             # run 1 on dataset v1
-            with framelock.track(name="r1", repo=repo) as run1:
+            with framepin.track(name="r1", repo=repo) as run1:
                 run1.use_dataset(os.path.join(d, "data"))
                 run1.log_metric("val_loss", 0.5)
 
             # change data, run 2 on dataset v2
             _write(d, "data/a.mp4", b"aaaa-changed")
-            with framelock.track(name="r2", repo=repo) as run2:
+            with framepin.track(name="r2", repo=repo) as run2:
                 run2.use_dataset(os.path.join(d, "data"))
                 run2.log_metric("val_loss", 0.7)
 

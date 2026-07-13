@@ -1,13 +1,13 @@
 """Experiment tracking that stays pinned to an exact dataset version.
 
-The whole point of framelock is the *link* between a run and the bytes it
+The whole point of framepin is the *link* between a run and the bytes it
 trained on. ``track()`` records params, metrics, the git commit, and — crucially
 — the dataset version(s) the run consumed, so later you can ask "did my metric
 move because of the code or because of the data?".
 
-    import framelock
+    import framepin
 
-    with framelock.track(name="baseline", params={"lr": 3e-4}) as run:
+    with framepin.track(name="baseline", params={"lr": 3e-4}) as run:
         run.use_dataset("data/clips")        # snapshots + pins the version
         for epoch in range(n):
             ...

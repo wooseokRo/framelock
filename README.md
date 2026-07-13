@@ -1,14 +1,14 @@
-# framelock
+# framepin
 
 **A lockfile for your video/sequence-ML datasets and experiments — reproduce any run without copying a single frame.**
 
-`framelock` pins the *exact* data a training run saw, links it to the run's
+`framepin` pins the *exact* data a training run saw, links it to the run's
 params/metrics/commit, and tells you — when a metric moves — whether it was the
 **code** or the **data**. Zero dependencies, no server, no data copies. Just
 JSON that commits cleanly to git.
 
 ```bash
-pip install git+https://github.com/boogy-ro/framelock   # zero dependencies
+pip install framepin   # zero dependencies — pure standard library
 ```
 
 > Status: **v0.1 alpha.** Core (snapshot / diff / track / regress) works and is
@@ -31,12 +31,12 @@ If you train models on video or sequence data, this has happened to you:
 Video datasets are big, churn constantly, and get reorganized — so a directory
 reshuffle looks like "half my data changed" in a naive diff.
 
-## What framelock does
+## What framepin does
 
 ```python
-import framelock
+import framepin
 
-with framelock.track(name="baseline", params={"lr": 3e-4}) as run:
+with framepin.track(name="baseline", params={"lr": 3e-4}) as run:
     run.use_dataset("data/clips")      # content-hashes + pins this exact version
     model = train(...)
     run.log_metric("val_loss", 0.21)   # pinned to that version forever
@@ -45,7 +45,7 @@ with framelock.track(name="baseline", params={"lr": 3e-4}) as run:
 Then, three weeks later:
 
 ```bash
-$ framelock regress <old_run> <new_run> -m val_loss
+$ framepin regress <old_run> <new_run> -m val_loss
 regress 02189c0fbd14 -> ab09cc84a35a
   val_loss: 0.21 -> 0.28  (Δ +0.07)
 
@@ -53,7 +53,7 @@ regress 02189c0fbd14 -> ab09cc84a35a
     A metric move here cannot be attributed to code alone.
 ```
 
-That last line is the whole point. **framelock separates "the code regressed"
+That last line is the whole point. **framepin separates "the code regressed"
 from "the data changed under you."**
 
 ## Before / after
@@ -68,57 +68,57 @@ run.log({"dataset": "data/clips (v3?)", "val_loss": 0.21})
 **After** — the dataset is a content hash you can reproduce and diff:
 
 ```python
-with framelock.track(name="baseline") as run:
+with framepin.track(name="baseline") as run:
     run.use_dataset("data/clips")   # -> version c29aa729c669 (Merkle root of every byte)
     run.log_metric("val_loss", 0.21)
-# later: `framelock show <run>` -> exact version; `framelock diff v1 v2` -> what changed
+# later: `framepin show <run>` -> exact version; `framepin diff v1 v2` -> what changed
 ```
 
 ## 60-second quickstart
 
 ```bash
 cd your-project
-framelock init                     # creates .framelock/  (commit it to git)
+framepin init                     # creates .framepin/  (commit it to git)
 
-framelock snapshot data/clips      # -> snapshot c29aa729c669 (N files, no copies)
+framepin snapshot data/clips      # -> snapshot c29aa729c669 (N files, no copies)
 # ... change / relabel / resample your data ...
-framelock snapshot data/clips      # -> a new version id
+framepin snapshot data/clips      # -> a new version id
 
-framelock diff c29aa729c669 <new>  # added / removed / modified / MOVED
+framepin diff c29aa729c669 <new>  # added / removed / modified / MOVED
 ```
 
 ### Datasets defined by path-list files (train.txt of absolute paths)
 
 Many teams don't train on "a directory" — they train on **txt manifests**: one
 absolute path per line (500k clips, several lists concatenated per experiment).
-framelock pins that whole construct — the list files *and* the bytes they
+framepin pins that whole construct — the list files *and* the bytes they
 point at:
 
 ```bash
-framelock snapshot --from-list train_urban.txt train_highway.txt
+framepin snapshot --from-list train_urban.txt train_highway.txt
 # -> one version id covering: both txt files + every referenced clip
 #    re-encode one clip, or edit one line  -> different version id
 #    a listed path that no longer exists   -> "⚠ recorded as missing"
 ```
 
 Repeated paths across lists are deduped. For 100k+ files, content hashes are
-cached (`.framelock/hashcache.json`) so later snapshots only re-read files
+cached (`.framepin/hashcache.json`) so later snapshots only re-read files
 whose size/mtime changed; `--fast` skips content reads entirely (size+mtime
 fingerprint) for routine checks — take a periodic full snapshot as your anchor
 of record.
 
 ```python
-man = framelock.snapshot_from_lists(["train_urban.txt", "train_highway.txt"])
-with framelock.track(name="exp-8") as run:
+man = framepin.snapshot_from_lists(["train_urban.txt", "train_highway.txt"])
+with framepin.track(name="exp-8") as run:
     run.use_dataset(man)               # pins the exact list+content version
 ```
 
 Track experiments from Python:
 
 ```python
-import framelock
+import framepin
 
-with framelock.track(name="exp-7", params={"lr": 3e-4, "aug": "mixup"}) as run:
+with framepin.track(name="exp-7", params={"lr": 3e-4, "aug": "mixup"}) as run:
     run.use_dataset("data/clips")
     for epoch in range(epochs):
         ...
@@ -129,14 +129,14 @@ with framelock.track(name="exp-7", params={"lr": 3e-4, "aug": "mixup"}) as run:
 Inspect lineage and compare:
 
 ```bash
-framelock runs                     # every run, its metrics, and its data version
-framelock show <run>               # full lineage: run -> dataset version -> files
-framelock regress <a> <b> -m map50 # metric delta + "was it code or data?"
+framepin runs                     # every run, its metrics, and its data version
+framepin show <run>               # full lineage: run -> dataset version -> files
+framepin regress <a> <b> -m map50 # metric delta + "was it code or data?"
 ```
 
 ## Why not W&B / MLflow / DVC?
 
-| | framelock | W&B / MLflow | DVC |
+| | framepin | W&B / MLflow | DVC |
 |---|---|---|---|
 | Pins run ↔ **exact dataset version** | ✅ first-class | ⚠️ manual string/artifact | ⚠️ separate from metrics |
 | "Code vs data" regression answer | ✅ `regress` | ❌ | ❌ |
@@ -146,10 +146,10 @@ framelock regress <a> <b> -m map50 # metric delta + "was it code or data?"
 | Runtime dependencies | **0** | many | several |
 | Git-friendly plain-JSON store | ✅ | ❌ | ✅ (pointers) |
 
-framelock is deliberately small. It is **not** a full experiment platform — it
+framepin is deliberately small. It is **not** a full experiment platform — it
 does the one thing those tools under-serve: making the *dataset version* a
 first-class, reproducible, diffable part of every run. Use it alongside W&B if
-you like; framelock just owns the data-lineage question.
+you like; framepin just owns the data-lineage question.
 
 ## How it works
 
@@ -160,16 +160,16 @@ you like; framelock just owns the data-lineage question.
 - **Diff** classifies changes into added / removed / modified / **moved**, so a
   reorg of identical clips reads as moves, not churn.
 - **Track** records a run's params, metrics, git commit, and the dataset
-  version(s) it consumed, into `.framelock/runs/<id>.json`.
+  version(s) it consumed, into `.framepin/runs/<id>.json`.
 - **Regress** compares two runs' metrics *and* their pinned dataset versions.
 
-Everything lives under `.framelock/` as plain, sorted JSON. Commit it.
+Everything lives under `.framepin/` as plain, sorted JSON. Commit it.
 
 ## Install from source
 
 ```bash
-git clone https://github.com/boogy-ro/framelock
-cd framelock
+git clone https://github.com/boogy-ro/framepin
+cd framepin
 pip install -e .          # or just add the repo to PYTHONPATH — no deps
 python -m unittest discover -s tests
 ```
@@ -185,7 +185,7 @@ python3 examples/quickstart_demo.py
 
 ## Roadmap
 
-- `framelock gc` / remote manifest registry for teams
+- `framepin gc` / remote manifest registry for teams
 - CI gate: fail a build when the dataset regresses vs a pinned baseline
 - Optional integrations (export runs to W&B / MLflow)
 - Per-split / per-label manifests for stratified datasets
@@ -196,31 +196,31 @@ exactly where this should earn its keep or die. Tell me where it falls short.
 ## FAQ
 
 **How do I version an ML dataset without copying it?**
-`framelock snapshot data/clips` content-hashes every file into an immutable
+`framepin snapshot data/clips` content-hashes every file into an immutable
 version id (a Merkle root). Your data never moves; the snapshot is a few KB of
 JSON you commit to git.
 
 **How do I know which dataset version an old training run used?**
-If the run was wrapped in `framelock.track(...)` with `run.use_dataset(...)`,
-`framelock show <run>` prints its exact pinned dataset version and file list.
+If the run was wrapped in `framepin.track(...)` with `run.use_dataset(...)`,
+`framepin show <run>` prints its exact pinned dataset version and file list.
 
 **My metric regressed — was it my code or my data?**
-`framelock regress <old_run> <new_run> -m val_loss` compares the two runs'
+`framepin regress <old_run> <new_run> -m val_loss` compares the two runs'
 metrics *and* their pinned dataset versions, and prints either
 `⚠ DATA CHANGED` or `✓ same dataset version` so you know where to look.
 
 **My dataset is a txt file of absolute paths (500k clips), not a directory.**
-`framelock snapshot --from-list train_a.txt train_b.txt` pins the list files
+`framepin snapshot --from-list train_a.txt train_b.txt` pins the list files
 and every file they reference, deduped across lists. Dead paths are recorded
 as missing. Use `--fast` for size+mtime fingerprints on huge datasets.
 
-**Does framelock replace W&B, MLflow, or DVC?**
+**Does framepin replace W&B, MLflow, or DVC?**
 No. It runs alongside them and owns one thing they under-serve: the
 dataset-version ↔ run link and the code-vs-data question. No server, no
 account, zero dependencies.
 
 **How do I detect that files were renamed/reorganized rather than changed?**
-`framelock diff v1 v2` pairs identical-content files across paths and reports
+`framepin diff v1 v2` pairs identical-content files across paths and reports
 them as MOVED instead of added+removed.
 
 ## License

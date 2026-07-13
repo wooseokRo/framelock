@@ -1,7 +1,7 @@
 import unittest
 
-from framelock.manifest import Manifest, FileEntry
-from framelock.diff import diff_manifests
+from framepin.manifest import Manifest, FileEntry
+from framepin.diff import diff_manifests
 
 
 def _man(files):

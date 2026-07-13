@@ -19,7 +19,7 @@ from . import hashing
 MANIFEST_SCHEMA = 1
 
 # Never snapshot our own store or common VCS/OS noise by default.
-DEFAULT_IGNORE = (".framelock", ".git", ".hg", ".svn", ".DS_Store", "__pycache__")
+DEFAULT_IGNORE = (".framepin", ".git", ".hg", ".svn", ".DS_Store", "__pycache__")
 
 
 @dataclass(frozen=True)

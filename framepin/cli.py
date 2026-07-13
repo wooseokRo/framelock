@@ -1,4 +1,4 @@
-"""Command-line interface: framelock init/snapshot/diff/runs/show/regress."""
+"""Command-line interface: framepin init/snapshot/diff/runs/show/regress."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def _now() -> str:
 
 def cmd_init(args) -> int:
     repo = Repo.init(args.path)
-    print(f"initialized framelock store at {repo.store}")
+    print(f"initialized framepin store at {repo.store}")
     return 0
 
 
@@ -37,7 +37,7 @@ def cmd_snapshot(args) -> int:
     elif args.dataset:
         man = snapshot(args.dataset, created_at=_now())
     else:
-        print("framelock: error: give a dataset directory or --from-list", file=sys.stderr)
+        print("framepin: error: give a dataset directory or --from-list", file=sys.stderr)
         return 2
     repo.save_manifest(man)
     missing = sum(1 for f in man.files if f.hash == "missing:")
@@ -144,13 +144,13 @@ def cmd_regress(args) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="framelock",
+        prog="framepin",
         description="A lockfile for your video/sequence-ML datasets and experiments.",
     )
-    p.add_argument("--version", action="version", version=f"framelock {__version__}")
+    p.add_argument("--version", action="version", version=f"framepin {__version__}")
     sub = p.add_subparsers(dest="command")
 
-    sp = sub.add_parser("init", help="create a .framelock store")
+    sp = sub.add_parser("init", help="create a .framepin store")
     sp.add_argument("path", nargs="?", default=".")
     sp.set_defaults(func=cmd_init)
 
@@ -204,7 +204,7 @@ def main(argv=None) -> int:
     try:
         return args.func(args)
     except (RepoError, FileNotFoundError, NotADirectoryError) as e:
-        print(f"framelock: error: {e}", file=sys.stderr)
+        print(f"framepin: error: {e}", file=sys.stderr)
         return 2
 
 

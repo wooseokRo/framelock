@@ -3,12 +3,12 @@ import shutil
 import tempfile
 import unittest
 
-from framelock.listfile import HashCache, parse_list_file, snapshot_from_lists
+from framepin.listfile import HashCache, parse_list_file, snapshot_from_lists
 
 
 class ListfileTests(unittest.TestCase):
     def setUp(self):
-        self.dir = tempfile.mkdtemp(prefix="framelock-list-")
+        self.dir = tempfile.mkdtemp(prefix="framepin-list-")
         self.data = os.path.join(self.dir, "clips")
         os.makedirs(self.data)
         self.files = []

@@ -2,8 +2,8 @@ import os
 import tempfile
 import unittest
 
-from framelock import manifest as m
-from framelock import hashing
+from framepin import manifest as m
+from framepin import hashing
 
 
 def _write(root, rel, data: bytes):
@@ -24,7 +24,7 @@ class TestManifest(unittest.TestCase):
             paths = sorted(f.path for f in man.files)
             self.assertEqual(paths, ["clips/a.mp4", "clips/b.mp4"])
             # No data was copied anywhere under the store; manifest is metadata only.
-            self.assertNotIn(".framelock", os.listdir(d))
+            self.assertNotIn(".framepin", os.listdir(d))
 
     def test_root_is_deterministic(self):
         with tempfile.TemporaryDirectory() as d:
@@ -59,10 +59,10 @@ class TestManifest(unittest.TestCase):
             # Two empty snapshots share a stable root.
             self.assertEqual(man.root, m.snapshot(d).root)
 
-    def test_ignores_framelock_and_git(self):
+    def test_ignores_framepin_and_git(self):
         with tempfile.TemporaryDirectory() as d:
             _write(d, "real.txt", b"data")
-            _write(d, ".framelock/datasets/x.json", b"{}")
+            _write(d, ".framepin/datasets/x.json", b"{}")
             _write(d, ".git/config", b"[core]")
             man = m.snapshot(d)
             self.assertEqual([f.path for f in man.files], ["real.txt"])

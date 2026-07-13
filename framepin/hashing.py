@@ -1,6 +1,6 @@
 """Content hashing utilities.
 
-framelock identifies data by *content*, not by path or mtime. A frame that is
+framepin identifies data by *content*, not by path or mtime. A frame that is
 byte-identical across two datasets hashes the same, which is what lets us detect
 moved/renamed files and reproduce a run without copying a single byte.
 """

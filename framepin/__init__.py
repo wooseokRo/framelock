@@ -1,4 +1,4 @@
-"""framelock — a lockfile for your video/sequence-ML datasets and experiments.
+"""framepin — a lockfile for your video/sequence-ML datasets and experiments.
 
 Serverless, dependency-free, git-friendly versioning + experiment tracking.
 Snapshot a dataset by content (no copies), track a run pinned to that exact

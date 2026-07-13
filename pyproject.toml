@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "framelock"
+name = "framepin"
 version = "0.1.0"
 description = "A lockfile for your video/sequence-ML datasets and experiments — reproduce any run without copying a single frame."
 readme = "README.md"
@@ -33,11 +33,11 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/boogy-ro/framelock"
-Issues = "https://github.com/boogy-ro/framelock/issues"
+Homepage = "https://github.com/boogy-ro/framepin"
+Issues = "https://github.com/boogy-ro/framepin/issues"
 
 [project.scripts]
-framelock = "framelock.cli:main"
+framepin = "framepin.cli:main"
 
 [tool.setuptools]
-packages = ["framelock"]
+packages = ["framepin"]
