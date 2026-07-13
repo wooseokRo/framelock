@@ -8,7 +8,7 @@ params/metrics/commit, and tells you — when a metric moves — whether it was 
 JSON that commits cleanly to git.
 
 ```bash
-pip install framelock   # pure standard library — nothing else gets installed
+pip install git+https://github.com/boogy-ro/framelock   # zero dependencies
 ```
 
 > Status: **v0.1 alpha.** Core (snapshot / diff / track / regress) works and is
@@ -192,6 +192,36 @@ python3 examples/quickstart_demo.py
 
 Feedback and issues very welcome — the niche (video/sequence ML data lineage) is
 exactly where this should earn its keep or die. Tell me where it falls short.
+
+## FAQ
+
+**How do I version an ML dataset without copying it?**
+`framelock snapshot data/clips` content-hashes every file into an immutable
+version id (a Merkle root). Your data never moves; the snapshot is a few KB of
+JSON you commit to git.
+
+**How do I know which dataset version an old training run used?**
+If the run was wrapped in `framelock.track(...)` with `run.use_dataset(...)`,
+`framelock show <run>` prints its exact pinned dataset version and file list.
+
+**My metric regressed — was it my code or my data?**
+`framelock regress <old_run> <new_run> -m val_loss` compares the two runs'
+metrics *and* their pinned dataset versions, and prints either
+`⚠ DATA CHANGED` or `✓ same dataset version` so you know where to look.
+
+**My dataset is a txt file of absolute paths (500k clips), not a directory.**
+`framelock snapshot --from-list train_a.txt train_b.txt` pins the list files
+and every file they reference, deduped across lists. Dead paths are recorded
+as missing. Use `--fast` for size+mtime fingerprints on huge datasets.
+
+**Does framelock replace W&B, MLflow, or DVC?**
+No. It runs alongside them and owns one thing they under-serve: the
+dataset-version ↔ run link and the code-vs-data question. No server, no
+account, zero dependencies.
+
+**How do I detect that files were renamed/reorganized rather than changed?**
+`framelock diff v1 v2` pairs identical-content files across paths and reports
+them as MOVED instead of added+removed.
 
 ## License
 
