@@ -51,6 +51,46 @@ def cmd_snapshot(args) -> int:
     return 0
 
 
+def cmd_verify(args) -> int:
+    """CI gate: exit 0 if the dataset still matches a pinned version, 3 on drift."""
+    repo = Repo.discover(".")
+    pinned = repo.load_manifest(args.against)
+    if args.from_list:
+        import os
+
+        from .listfile import HashCache, snapshot_from_lists
+
+        cache = HashCache(os.path.join(repo.store, "hashcache.json"))
+        current = snapshot_from_lists(args.from_list, algo=pinned.algo, cache=cache)
+        target = "lists: " + " ".join(args.from_list)
+    elif args.dataset:
+        current = snapshot(args.dataset, algo=pinned.algo)
+        target = args.dataset
+    else:
+        print("framepin: error: give a dataset directory or --from-list", file=sys.stderr)
+        return 2
+
+    if current.root == pinned.root:
+        print(f"✓ verified: {target} matches pinned version {pinned.short}")
+        return 0
+
+    d = diff_manifests(pinned, current)
+    s = d.summary()
+    print(
+        f"✗ DATASET DRIFT vs pinned {pinned.short}:  "
+        f"+{s['added']} -{s['removed']} ~{s['modified']} →{s['moved']}"
+    )
+    changes = ([f"  + {p}" for p in d.added]
+               + [f"  - {p}" for p in d.removed]
+               + [f"  ~ {m.path}" for m in d.modified]
+               + [f"  → {m.from_path} -> {m.to_path}" for m in d.moved])
+    for line in changes[:10]:
+        print(line)
+    if len(changes) > 10:
+        print(f"  … and {len(changes) - 10} more (run `framepin diff`)")
+    return 3
+
+
 def cmd_diff(args) -> int:
     repo = Repo.discover(".")
     old = repo.load_manifest(args.old)
@@ -173,6 +213,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("-v", "--verbose", action="store_true")
     sp.set_defaults(func=cmd_snapshot)
+
+    sp = sub.add_parser(
+        "verify",
+        help="CI gate: exit 0 if a dataset still matches a pinned version, 3 on drift",
+    )
+    sp.add_argument("dataset", nargs="?", default=None)
+    sp.add_argument("--against", required=True, metavar="VERSION",
+                    help="pinned dataset version (full root or short prefix)")
+    sp.add_argument("--from-list", nargs="+", metavar="LIST_TXT",
+                    help="verify a path-list dataset instead of a directory")
+    sp.set_defaults(func=cmd_verify)
 
     sp = sub.add_parser("diff", help="show drift between two dataset versions")
     sp.add_argument("old")

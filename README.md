@@ -136,6 +136,17 @@ framepin show <run>               # full lineage: run -> dataset version -> file
 framepin regress <a> <b> -m map50 # metric delta + "was it code or data?"
 ```
 
+### CI gate: fail the build when the data drifted
+
+Pin a baseline version once, then let CI refuse changes that silently alter
+the dataset:
+
+```bash
+framepin verify data/clips --against c29aa729c669     # exit 0 = intact
+# ✗ DATASET DRIFT vs pinned c29aa729c669:  +1 -0 ~2 →0   -> exit 3, build fails
+framepin verify --from-list train_a.txt train_b.txt --against <version>
+```
+
 ## Why not W&B / MLflow / DVC?
 
 | | framepin | W&B / MLflow | DVC |
@@ -188,7 +199,7 @@ python3 examples/quickstart_demo.py
 ## Roadmap
 
 - `framepin gc` / remote manifest registry for teams
-- CI gate: fail a build when the dataset regresses vs a pinned baseline
+- richer CI gate (`verify` ships today; next: allow-lists, baseline auto-update PRs)
 - Optional integrations (export runs to W&B / MLflow)
 - Per-split / per-label manifests for stratified datasets
 
