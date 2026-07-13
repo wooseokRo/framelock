@@ -1,0 +1,181 @@
+"""Command-line interface: framelock init/snapshot/diff/runs/show/regress."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+
+from . import __version__, hashing
+from .manifest import snapshot, dumps as manifest_dumps
+from .diff import diff_manifests
+from .repo import Repo, RepoError
+from .tracking import compare_runs
+from datetime import datetime, timezone
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def cmd_init(args) -> int:
+    repo = Repo.init(args.path)
+    print(f"initialized framelock store at {repo.store}")
+    return 0
+
+
+def cmd_snapshot(args) -> int:
+    repo = Repo.open_or_init(".")
+    man = snapshot(args.dataset, created_at=_now())
+    repo.save_manifest(man)
+    print(f"snapshot {man.short}  ({man.file_count} files, {man.total_bytes} bytes)")
+    if args.verbose:
+        print(f"  root: {man.root}")
+        for f in man.files:
+            print(f"  {hashing.short(f.hash)}  {f.size:>10}  {f.path}")
+    return 0
+
+
+def cmd_diff(args) -> int:
+    repo = Repo.discover(".")
+    old = repo.load_manifest(args.old)
+    new = repo.load_manifest(args.new)
+    d = diff_manifests(old, new)
+    s = d.summary()
+    print(
+        f"{old.short}..{new.short}  "
+        f"+{s['added']} -{s['removed']} ~{s['modified']} "
+        f"→{s['moved']} ={s['unchanged']}"
+    )
+    for p in d.added:
+        print(f"  + {p}")
+    for p in d.removed:
+        print(f"  - {p}")
+    for m in d.modified:
+        print(f"  ~ {m.path}  ({hashing.short(m.old_hash)} -> {hashing.short(m.new_hash)})")
+    for m in d.moved:
+        print(f"  → {m.from_path} -> {m.to_path}")
+    return 0
+
+
+def cmd_runs(args) -> int:
+    repo = Repo.discover(".")
+    runs = repo.list_runs()
+    if not runs:
+        print("no runs recorded")
+        return 0
+    for r in runs:
+        metrics = " ".join(f"{k}={v}" for k, v in sorted(r.get("metrics", {}).items()))
+        data = ",".join(hashing.short(d["root"]) for d in r.get("datasets", []))
+        print(
+            f"{r['id']}  {r.get('created_at','')}  "
+            f"{r.get('name','') or '-':<16}  [{data}]  {metrics}"
+        )
+    return 0
+
+
+def cmd_show(args) -> int:
+    repo = Repo.discover(".")
+    r = repo.load_run(args.run)
+    print(f"run     {r['id']}  ({r.get('name','')})")
+    print(f"created {r.get('created_at','')}   status {r.get('status','')}")
+    print(f"commit  {r.get('git_commit','') or '(none)'}")
+    if r.get("params"):
+        print("params:")
+        for k, v in sorted(r["params"].items()):
+            print(f"  {k} = {v}")
+    if r.get("metrics"):
+        print("metrics:")
+        for k, v in sorted(r["metrics"].items()):
+            print(f"  {k} = {v}")
+    print("datasets (lineage):")
+    for d in r.get("datasets", []):
+        lbl = f" {d['label']}" if d.get("label") else ""
+        print(
+            f"  {hashing.short(d['root'])}{lbl}  "
+            f"{d.get('file_count','?')} files  {d.get('path','')}"
+        )
+    return 0
+
+
+def cmd_regress(args) -> int:
+    repo = Repo.discover(".")
+    a = repo.load_run(args.run_a)
+    b = repo.load_run(args.run_b)
+    rep = compare_runs(a, b, metric=args.metric or "")
+    print(f"regress {a['id']} -> {b['id']}")
+    for k, m in sorted(rep["metrics"].items()):
+        delta = m["delta"]
+        darrow = ""
+        if isinstance(delta, bool):
+            pass
+        elif isinstance(delta, int):
+            darrow = f"  (Δ {'+' if delta >= 0 else ''}{delta})"
+        elif isinstance(delta, float):
+            darrow = f"  (Δ {'+' if delta >= 0 else ''}{delta:.6g})"
+        print(f"  {k}: {m['a']} -> {m['b']}{darrow}")
+    print()
+    if rep["data_changed"]:
+        print("  ⚠ DATA CHANGED between these runs — the dataset version differs.")
+        print("    A metric move here cannot be attributed to code alone.")
+    else:
+        print("  ✓ same dataset version — metric changes are attributable to code/params.")
+    if rep["code_changed"]:
+        print("  • code/commit differs (or commit unknown) between the runs.")
+    else:
+        print("  • same git commit.")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="framelock",
+        description="A lockfile for your video/sequence-ML datasets and experiments.",
+    )
+    p.add_argument("--version", action="version", version=f"framelock {__version__}")
+    sub = p.add_subparsers(dest="command")
+
+    sp = sub.add_parser("init", help="create a .framelock store")
+    sp.add_argument("path", nargs="?", default=".")
+    sp.set_defaults(func=cmd_init)
+
+    sp = sub.add_parser("snapshot", help="version a dataset directory by content")
+    sp.add_argument("dataset")
+    sp.add_argument("-v", "--verbose", action="store_true")
+    sp.set_defaults(func=cmd_snapshot)
+
+    sp = sub.add_parser("diff", help="show drift between two dataset versions")
+    sp.add_argument("old")
+    sp.add_argument("new")
+    sp.set_defaults(func=cmd_diff)
+
+    sp = sub.add_parser("runs", help="list tracked experiment runs")
+    sp.set_defaults(func=cmd_runs)
+
+    sp = sub.add_parser("show", help="show a run's full lineage")
+    sp.add_argument("run")
+    sp.set_defaults(func=cmd_show)
+
+    sp = sub.add_parser("regress", help="compare two runs: code vs data")
+    sp.add_argument("run_a")
+    sp.add_argument("run_b")
+    sp.add_argument("-m", "--metric", default="", help="focus a single metric")
+    sp.set_defaults(func=cmd_regress)
+
+    return p
+
+
+def main(argv=None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if not getattr(args, "command", None):
+        parser.print_help()
+        return 1
+    try:
+        return args.func(args)
+    except (RepoError, FileNotFoundError, NotADirectoryError) as e:
+        print(f"framelock: error: {e}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

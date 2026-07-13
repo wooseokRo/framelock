@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# OS
+.DS_Store
+
+# framelock stores created by demos/tests should NOT be committed from the repo
+# root. In a *user's* project, .framelock/ IS meant to be committed — this
+# ignore only applies to this tool's own repo to keep scratch stores out.
+/.framelock/
+/tmp-*/
+
+# internal business docs — never publish
+/BUSINESS-REPORT-KR.md
+/launch/
+/.omc/
