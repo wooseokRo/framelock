@@ -1,5 +1,7 @@
 # framepin
 
+[![PyPI](https://img.shields.io/pypi/v/framepin)](https://pypi.org/project/framepin/)
+
 **A lockfile for your video/sequence-ML datasets and experiments — reproduce any run without copying a single frame.**
 
 `framepin` pins the *exact* data a training run saw, links it to the run's
@@ -192,6 +194,9 @@ python3 examples/quickstart_demo.py
 
 Feedback and issues very welcome — the niche (video/sequence ML data lineage) is
 exactly where this should earn its keep or die. Tell me where it falls short.
+
+**Using this on a team?** Comment on [the team-features issue](https://github.com/boogy-ro/framepin/issues/1)
+(CI gate / shared registry / audit reports) — it decides what gets built next.
 
 ## FAQ
 
