@@ -1,8 +1,10 @@
-"""Command-line interface: framepin init/snapshot/diff/runs/show/regress."""
+"""Command-line interface: init/snapshot/verify/log/gc/diff/runs/show/regress."""
 
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import sys
 
 from . import __version__, hashing
@@ -26,8 +28,6 @@ def cmd_init(args) -> int:
 def cmd_snapshot(args) -> int:
     repo = Repo.open_or_init(".")
     if args.from_list:
-        import os
-
         from .listfile import HashCache, snapshot_from_lists
 
         cache = HashCache(os.path.join(repo.store, "hashcache.json"))
@@ -43,9 +43,7 @@ def cmd_snapshot(args) -> int:
     repo.save_manifest(man)
     missing = sum(1 for f in man.files if f.hash == "missing:")
     if args.json:
-        import json as _json
-
-        print(_json.dumps({
+        print(json.dumps({
             "root": man.root, "short": man.short, "file_count": man.file_count,
             "total_bytes": man.total_bytes, "missing": missing,
         }))
@@ -66,8 +64,6 @@ def cmd_gc(args) -> int:
     Never touches a manifest referenced by any recorded run; keeps the newest
     --keep unreferenced ones as a safety margin.
     """
-    import os
-
     repo = Repo.discover(".")
     referenced = set()
     for run in repo.list_runs():
@@ -104,10 +100,8 @@ def cmd_log(args) -> int:
         print("no dataset versions recorded")
         return 0
     manifests.sort(key=lambda m: m.created_at, reverse=True)
-    if getattr(args, "json", False):
-        import json as _json
-
-        print(_json.dumps([
+    if args.json:
+        print(json.dumps([
             {"root": m.root, "short": m.short, "created_at": m.created_at,
              "file_count": m.file_count, "total_bytes": m.total_bytes,
              "dataset_path": m.dataset_path}
@@ -125,8 +119,6 @@ def cmd_verify(args) -> int:
     repo = Repo.discover(".")
     pinned = repo.load_manifest(args.against)
     if args.from_list:
-        import os
-
         from .listfile import HashCache, snapshot_from_lists
 
         cache = HashCache(os.path.join(repo.store, "hashcache.json"))
@@ -142,11 +134,9 @@ def cmd_verify(args) -> int:
 
     match = current.root == pinned.root
     if args.json:
-        import json as _json
-
         s = diff_manifests(pinned, current).summary() if not match else \
             {"added": 0, "removed": 0, "modified": 0, "moved": 0}
-        print(_json.dumps({
+        print(json.dumps({
             "match": match, "pinned": pinned.root, "current": current.root,
             "summary": {k: s[k] for k in ("added", "removed", "modified", "moved")},
         }))

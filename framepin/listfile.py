@@ -85,14 +85,14 @@ class HashCache:
         self._dirty = False
 
 
-def _entry_for(abspath: str, algo: str, cache: HashCache | None, fast: bool) -> FileEntry:
+def _entry_for(abspath: str, algo: str, cache: HashCache | None) -> FileEntry:
+    """Content-hashed entry for a single file (used for the list files, which
+    are small; referenced files go through the batched path in
+    snapshot_from_lists so they can be hashed concurrently)."""
     try:
         st = os.stat(abspath)
     except OSError:
         return FileEntry(path=abspath, hash="missing:", size=0)
-    if fast:
-        return FileEntry(path=abspath, hash=f"stat:{st.st_size}:{st.st_mtime_ns}",
-                         size=st.st_size)
     if cache is not None:
         hit = cache.get(abspath, st.st_size, st.st_mtime_ns, algo)
         if hit is not None:
@@ -129,7 +129,7 @@ def snapshot_from_lists(
     seen = set()
     for lp in list_paths:
         # list files are always content-hashed (small), never fast-fingerprinted
-        entries.append(_entry_for(lp, algo, cache, fast=False))
+        entries.append(_entry_for(lp, algo, cache))
         total += entries[-1].size
         for ref in parse_list_file(lp):
             ref = os.path.abspath(ref)
