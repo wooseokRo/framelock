@@ -87,7 +87,13 @@ framepin snapshot data/clips      # -> snapshot c29aa729c669 (N files, no copies
 framepin snapshot data/clips      # -> a new version id
 
 framepin diff c29aa729c669 <new>  # added / removed / modified / MOVED
+framepin log                       # list every pinned version, newest first
+framepin gc --apply                # prune versions no run references (dry-run without --apply)
 ```
+
+Large datasets: add `--jobs 16` to snapshot/verify for parallel hashing.
+Scripts, CI and AI agents: add `--json` to snapshot/verify/log for
+machine-readable output.
 
 ### Datasets defined by path-list files (train.txt of absolute paths)
 
@@ -202,7 +208,7 @@ python3 examples/quickstart_demo.py
 
 ## Roadmap
 
-- `framepin gc` / remote manifest registry for teams
+- remote manifest registry for teams
 - richer CI gate (`verify` ships today; next: allow-lists, baseline auto-update PRs)
 - Optional integrations (export runs to W&B / MLflow)
 - Per-split / per-label manifests for stratified datasets
