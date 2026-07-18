@@ -38,6 +38,7 @@ class Manifest:
     file_count: int
     total_bytes: int
     files: list  # list[FileEntry]
+    splits: dict = field(default_factory=dict)  # name -> {glob, root, file_count, total_bytes}
     schema: int = MANIFEST_SCHEMA
 
     @property
@@ -60,6 +61,7 @@ class Manifest:
             file_count=d.get("file_count", len(files)),
             total_bytes=d.get("total_bytes", sum(f.size for f in files)),
             files=files,
+            splits=d.get("splits", {}),
             schema=d.get("schema", MANIFEST_SCHEMA),
         )
 
@@ -86,18 +88,42 @@ def _iter_files(root_dir: str, ignore: Iterable[str]):
             yield abspath, hashing.normalize_relpath(rel)
 
 
+def compute_splits(entries, split_globs: dict, algo: str = hashing.DEFAULT_ALGO) -> dict:
+    """Per-split version ids over a subset of ``entries`` (list[FileEntry]).
+
+    ``split_globs`` maps a split name to a glob (``*`` matches across ``/``,
+    same semantics as the rest of framepin). A glob matching zero files is
+    fine — its root is just the Merkle root of the empty set.
+    """
+    result = {}
+    for name, glob in split_globs.items():
+        matching = [e for e in entries if fnmatch.fnmatch(e.path, glob)]
+        result[name] = {
+            "glob": glob,
+            "root": hashing.merkle_root(((e.path, e.hash) for e in matching), algo=algo),
+            "file_count": len(matching),
+            "total_bytes": sum(e.size for e in matching),
+        }
+    return result
+
+
 def snapshot(
     dataset_path: str,
     algo: str = hashing.DEFAULT_ALGO,
     ignore: Iterable[str] = DEFAULT_IGNORE,
     created_at: str = "",
     jobs: int = hashing.DEFAULT_JOBS,
+    split_globs: dict = None,
 ) -> Manifest:
     """Build a :class:`Manifest` for ``dataset_path`` without copying data.
 
     The ``root`` digest is a pure function of the file set (paths + content
     hashes) and is independent of walk order, ``created_at`` and ``jobs``, so
-    snapshotting the same bytes twice yields the same version id.
+    snapshotting the same bytes twice yields the same version id. Pass
+    ``split_globs`` (name -> glob) to additionally record a per-split version
+    id for stratified datasets (see :func:`compute_splits`); splits are pure
+    metadata computed over the same entries, so the top-level ``root`` is
+    unchanged whether or not splits are requested.
     """
     if not os.path.isdir(dataset_path):
         raise NotADirectoryError(f"not a directory: {dataset_path}")
@@ -114,6 +140,7 @@ def snapshot(
 
     entries.sort(key=lambda e: e.path)  # deterministic file ordering in the JSON
     root = hashing.merkle_root(((e.path, e.hash) for e in entries), algo=algo)
+    splits = compute_splits(entries, split_globs, algo=algo) if split_globs else {}
 
     return Manifest(
         root=root,
@@ -123,6 +150,7 @@ def snapshot(
         file_count=len(entries),
         total_bytes=total,
         files=entries,
+        splits=splits,
     )
 
 

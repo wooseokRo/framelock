@@ -10,8 +10,9 @@ from .listfile import snapshot_from_lists, HashCache
 from .diff import diff_manifests, DatasetDiff
 from .tracking import track, Run, compare_runs
 from .repo import Repo
+from . import integrations
 
-__version__ = "0.1.2"
+__version__ = "0.2.0"
 
 __all__ = [
     "snapshot_from_lists",
@@ -24,5 +25,6 @@ __all__ = [
     "Run",
     "compare_runs",
     "Repo",
+    "integrations",
     "__version__",
 ]

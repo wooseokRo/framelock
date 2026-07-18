@@ -22,11 +22,14 @@ Core commands:
 - `framepin snapshot --from-list a.txt b.txt [--fast]` — version datasets defined as path-list txt files: pins the lists AND every referenced file; `--fast` fingerprints by size+mtime for 100k+ files
 - `framepin diff OLD NEW` — added / removed / modified / MOVED (a folder reorg of identical files shows as moves, not churn)
 - `framepin verify DIR --against VERSION` — CI gate: exit 0 if the dataset still matches the pinned version, exit 3 with a drift summary otherwise (also works with --from-list)
+- `framepin verify ... --allow GLOB` — tolerate expected churn: if every changed path matches an --allow glob (repeatable), the gate still passes; `--json` adds `"gate"` and `"allowed"`
+- `framepin snapshot DIR --split train='train/*' --split val='val/*'` — per-split version ids for stratified datasets (pure metadata; top-level version id unchanged); verify drift then reports which splits changed
 - `framepin log [--json]` — list stored dataset versions, newest first
 - `framepin gc [--apply --keep N]` — prune versions no run references (dry-run by default)
 - `framepin regress RUN_A RUN_B -m METRIC` — metric delta + "DATA CHANGED" or "same dataset version" verdict
 - `--jobs N` on snapshot/verify hashes files concurrently (large datasets); `--json` on snapshot/verify/log gives machine-readable output for agents and CI
 - Python API: `with framepin.track(name=..., params=...) as run: run.use_dataset("data/clips"); run.log_metric(...)`
+- Export lineage to your tracker: `framepin.integrations.to_mlflow(run)` / `to_wandb(run)` tag the active MLflow/W&B run with the pinned dataset version ids (lazy imports — mlflow/wandb never become dependencies)
 
 What framepin is NOT: an experiment dashboard (use W&B/MLflow alongside) or a
 data storage/transfer tool (it stores hashes, never bytes). It is the thin

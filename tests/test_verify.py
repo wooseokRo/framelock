@@ -1,3 +1,6 @@
+import contextlib
+import io
+import json
 import os
 import shutil
 import tempfile
@@ -48,6 +51,78 @@ class VerifyTests(unittest.TestCase):
         self.assertEqual(main(["verify", "--from-list", "train.txt", "--against", vid[:12]]), 0)
         os.remove(paths[2])  # a listed file disappears -> drift
         self.assertEqual(main(["verify", "--from-list", "train.txt", "--against", vid[:12]]), 3)
+
+    def test_verify_allow_passes_when_drift_fully_allowed(self):
+        # manifest paths are relative to the dataset dir itself, e.g. "clip_1.bin"
+        vid = self.snapshot_id()
+        with open("data/clip_1.bin", "wb") as fh:
+            fh.write(b"REENCODED" * 16)
+        self.assertEqual(
+            main(["verify", "data", "--against", vid[:12], "--allow", "clip_1.bin"]), 0
+        )
+
+    def test_verify_allow_fails_on_mixed_drift(self):
+        vid = self.snapshot_id()
+        with open("data/clip_0.bin", "wb") as fh:
+            fh.write(b"REENCODED0" * 16)
+        with open("data/clip_1.bin", "wb") as fh:
+            fh.write(b"REENCODED1" * 16)
+        self.assertEqual(
+            main(["verify", "data", "--against", vid[:12], "--allow", "clip_1.bin"]), 3
+        )
+
+    def test_verify_allow_json_fields(self):
+        vid = self.snapshot_id()
+        with open("data/clip_1.bin", "wb") as fh:
+            fh.write(b"REENCODED" * 16)
+
+        # fully allowed -> gate pass, exit 0
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = main([
+                "verify", "data", "--against", vid[:12],
+                "--allow", "clip_1.bin", "--json",
+            ])
+        self.assertEqual(rc, 0)
+        payload = json.loads(out.getvalue())
+        self.assertEqual(payload["gate"], "pass")
+        self.assertEqual(payload["allowed"], 1)
+        self.assertFalse(payload["match"])
+
+        # not allowed at all -> gate fail, exit 3
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = main([
+                "verify", "data", "--against", vid[:12],
+                "--allow", "nope_*.bin", "--json",
+            ])
+        self.assertEqual(rc, 3)
+        payload = json.loads(out.getvalue())
+        self.assertEqual(payload["gate"], "fail")
+        self.assertEqual(payload["allowed"], 0)
+
+    def test_verify_allow_removed_and_moved_paths(self):
+        vid = self.snapshot_id()
+        os.remove("data/clip_2.bin")  # removed
+        os.rename("data/clip_1.bin", "data/clip_1_renamed.bin")  # moved (same content)
+
+        # both sides of the move and the removed path are allowed -> pass
+        self.assertEqual(
+            main([
+                "verify", "data", "--against", vid[:12],
+                "--allow", "clip_2.bin", "--allow", "clip_1*",
+            ]),
+            0,
+        )
+
+        # move only partially covered (destination not allowed) -> still fails
+        self.assertEqual(
+            main([
+                "verify", "data", "--against", vid[:12],
+                "--allow", "clip_2.bin", "--allow", "clip_1.bin",
+            ]),
+            3,
+        )
 
 
 if __name__ == "__main__":

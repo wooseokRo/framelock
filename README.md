@@ -157,6 +157,53 @@ framepin verify data/clips --against c29aa729c669     # exit 0 = intact
 framepin verify --from-list train_a.txt train_b.txt --against <version>
 ```
 
+Expected churn (say, labels get re-exported every week) doesn't have to break
+the build — allow-list it:
+
+```bash
+framepin verify data/clips --against c29aa729c669 --allow 'labels/*'
+# ✓ allowed drift vs pinned c29aa729c669:  +0 -0 ~3 →0  (all changed paths match --allow)
+```
+
+`--allow` is repeatable; globs match manifest-relative paths (`*` matches
+across `/`). The gate still fails if *any* changed path falls outside the
+allow-list — allowed changes are just summarized instead of listed. With
+`--json` you get `"gate": "pass"|"fail"` plus an `"allowed"` count.
+
+### Stratified datasets: per-split version ids
+
+One dataset, several splits, one manifest — give each split its own version id
+so drift reports tell you *which* split moved:
+
+```bash
+framepin snapshot data/clips --split train='train/*' --split val='val/*'
+# snapshot a208968bd4cf  (500 files, 81236 bytes)
+#   split train  2519d0cc5791  (400 files, 64988 bytes)
+#   split val    985005ef8b59  (100 files, 16248 bytes)
+```
+
+Splits are pure metadata — the top-level version id is unchanged whether or
+not you record them. On `verify` drift, the report adds
+`splits changed: train` / `splits unchanged: val` (and `"splits_changed"`
+under `--json`), so a re-labeled val set never sends you digging through the
+train half of the diff.
+
+### Already on W&B or MLflow? Export the lineage
+
+framepin doesn't compete with your tracker — it feeds it. One call tags the
+active W&B / MLflow run with the exact pinned dataset version id(s), so the
+data version shows up right next to your metrics in their UI:
+
+```python
+with framepin.track(name="baseline") as run:
+    run.use_dataset("data/clips")
+    framepin.integrations.to_mlflow(run)   # tags: framepin.run_id, framepin.dataset.*
+    # or: framepin.integrations.to_wandb(run)
+```
+
+Neither library is a dependency — the imports are lazy, framepin stays at
+zero deps.
+
 ## Why not W&B / MLflow / DVC?
 
 | | framepin | W&B / MLflow | DVC |
@@ -209,9 +256,7 @@ python3 examples/quickstart_demo.py
 ## Roadmap
 
 - remote manifest registry for teams
-- richer CI gate (`verify` ships today; next: allow-lists, baseline auto-update PRs)
-- Optional integrations (export runs to W&B / MLflow)
-- Per-split / per-label manifests for stratified datasets
+- richer CI gate (`verify` + `--allow` ship today; next: baseline auto-update PRs)
 
 Feedback and issues very welcome — the niche (video/sequence ML data lineage) is
 exactly where this should earn its keep or die. Tell me where it falls short.

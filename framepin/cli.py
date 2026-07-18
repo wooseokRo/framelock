@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 import sys
 
 from . import __version__, hashing
-from .manifest import snapshot, dumps as manifest_dumps
+from .manifest import snapshot, compute_splits, dumps as manifest_dumps
 from .diff import diff_manifests
 from .repo import Repo, RepoError
 from .tracking import compare_runs
@@ -19,6 +20,26 @@ def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def _parse_splits(split_args):
+    """Parse repeated ``--split NAME=GLOB`` values into {name: glob}.
+
+    Returns ``None`` (after printing an error to stderr) on a malformed value.
+    """
+    if not split_args:
+        return {}
+    splits = {}
+    for item in split_args:
+        if "=" not in item:
+            print(
+                f"framepin: error: malformed --split value '{item}' (expected NAME=GLOB)",
+                file=sys.stderr,
+            )
+            return None
+        name, _, glob = item.partition("=")
+        splits[name] = glob
+    return splits
+
+
 def cmd_init(args) -> int:
     repo = Repo.init(args.path)
     print(f"initialized framepin store at {repo.store}")
@@ -27,6 +48,9 @@ def cmd_init(args) -> int:
 
 def cmd_snapshot(args) -> int:
     repo = Repo.open_or_init(".")
+    split_globs = _parse_splits(args.split)
+    if split_globs is None:
+        return 2
     if args.from_list:
         from .listfile import HashCache, snapshot_from_lists
 
@@ -35,22 +59,38 @@ def cmd_snapshot(args) -> int:
             args.from_list, created_at=_now(), cache=cache, fast=args.fast,
             jobs=args.jobs,
         )
+        if split_globs:
+            man.splits = compute_splits(man.files, split_globs, algo=man.algo)
     elif args.dataset:
-        man = snapshot(args.dataset, created_at=_now(), jobs=args.jobs)
+        man = snapshot(args.dataset, created_at=_now(), jobs=args.jobs, split_globs=split_globs)
     else:
         print("framepin: error: give a dataset directory or --from-list", file=sys.stderr)
         return 2
     repo.save_manifest(man)
     missing = sum(1 for f in man.files if f.hash == "missing:")
     if args.json:
-        print(json.dumps({
+        payload = {
             "root": man.root, "short": man.short, "file_count": man.file_count,
             "total_bytes": man.total_bytes, "missing": missing,
-        }))
+        }
+        if man.splits:
+            payload["splits"] = {
+                name: {
+                    "root": info["root"], "file_count": info["file_count"],
+                    "total_bytes": info["total_bytes"],
+                }
+                for name, info in man.splits.items()
+            }
+        print(json.dumps(payload))
         return 0
     print(f"snapshot {man.short}  ({man.file_count} files, {man.total_bytes} bytes)")
     if missing:
         print(f"  ⚠ {missing} referenced path(s) do not exist (recorded as missing)")
+    for name, info in man.splits.items():
+        print(
+            f"  split {name}  {hashing.short(info['root'])}  "
+            f"({info['file_count']} files, {info['total_bytes']} bytes)"
+        )
     if args.verbose:
         print(f"  root: {man.root}")
         for f in man.files:
@@ -133,33 +173,82 @@ def cmd_verify(args) -> int:
         return 2
 
     match = current.root == pinned.root
+    allow_globs = args.allow or []
+
+    def is_allowed(path: str) -> bool:
+        return any(fnmatch.fnmatch(path, g) for g in allow_globs)
+
+    d = None
+    allowed_count = 0
+    gate_pass = match
+    if not match:
+        d = diff_manifests(pinned, current)
+        drifted = (list(d.added) + list(d.removed) + [m.path for m in d.modified])
+        for m in d.moved:
+            drifted.append(m.from_path)
+            drifted.append(m.to_path)
+        flags = [is_allowed(p) for p in drifted]
+        allowed_count = sum(flags)
+        gate_pass = all(flags) if drifted else True
+
+    # Identical roots imply identical split roots, so only compare on drift.
+    splits_changed = []
+    splits_unchanged = []
+    if pinned.splits and not match:
+        pinned_split_globs = {name: info["glob"] for name, info in pinned.splits.items()}
+        cur_splits = compute_splits(current.files, pinned_split_globs, algo=pinned.algo)
+        for name, info in pinned.splits.items():
+            if cur_splits[name]["root"] != info["root"]:
+                splits_changed.append(name)
+            else:
+                splits_unchanged.append(name)
+
     if args.json:
-        s = diff_manifests(pinned, current).summary() if not match else \
+        s = d.summary() if d is not None else \
             {"added": 0, "removed": 0, "modified": 0, "moved": 0}
-        print(json.dumps({
+        payload = {
             "match": match, "pinned": pinned.root, "current": current.root,
             "summary": {k: s[k] for k in ("added", "removed", "modified", "moved")},
-        }))
-        return 0 if match else 3
+            "gate": "pass" if gate_pass else "fail", "allowed": allowed_count,
+        }
+        if pinned.splits:
+            payload["splits_changed"] = splits_changed
+        print(json.dumps(payload))
+        return 0 if gate_pass else 3
 
     if match:
         print(f"✓ verified: {target} matches pinned version {pinned.short}")
         return 0
 
-    d = diff_manifests(pinned, current)
     s = d.summary()
+    if gate_pass:
+        print(
+            f"✓ allowed drift vs pinned {pinned.short}:  "
+            f"+{s['added']} -{s['removed']} ~{s['modified']} →{s['moved']}  "
+            f"(all changed paths match --allow)"
+        )
+        return 0
+
     print(
         f"✗ DATASET DRIFT vs pinned {pinned.short}:  "
         f"+{s['added']} -{s['removed']} ~{s['modified']} →{s['moved']}"
     )
-    changes = ([f"  + {p}" for p in d.added]
-               + [f"  - {p}" for p in d.removed]
-               + [f"  ~ {m.path}" for m in d.modified]
-               + [f"  → {m.from_path} -> {m.to_path}" for m in d.moved])
+    changes = ([f"  + {p}" for p in d.added if not is_allowed(p)]
+               + [f"  - {p}" for p in d.removed if not is_allowed(p)]
+               + [f"  ~ {m.path}" for m in d.modified if not is_allowed(m.path)]
+               + [f"  → {m.from_path} -> {m.to_path}" for m in d.moved
+                  if not (is_allowed(m.from_path) and is_allowed(m.to_path))])
     for line in changes[:10]:
         print(line)
     if len(changes) > 10:
         print(f"  … and {len(changes) - 10} more (run `framepin diff`)")
+    if allowed_count > 0:
+        print(f"  ({allowed_count} allowed change(s) hidden by --allow)")
+    if pinned.splits:
+        if splits_changed:
+            print(f"  splits changed: {', '.join(splits_changed)}")
+        if splits_unchanged:
+            print(f"  splits unchanged: {', '.join(splits_unchanged)}")
     return 3
 
 
@@ -285,6 +374,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--jobs", type=int, default=hashing.DEFAULT_JOBS,
                     help="concurrent hashing threads (default 4)")
+    sp.add_argument(
+        "--split",
+        action="append",
+        metavar="NAME=GLOB",
+        help="record a per-split version id for paths matching GLOB (repeatable), "
+        "e.g. --split train=train/* --split val=val/*",
+    )
     sp.add_argument("--json", action="store_true",
                     help="machine-readable output (for agents/CI)")
     sp.add_argument("-v", "--verbose", action="store_true")
@@ -309,6 +405,14 @@ def build_parser() -> argparse.ArgumentParser:
                     help="pinned dataset version (full root or short prefix)")
     sp.add_argument("--from-list", nargs="+", metavar="LIST_TXT",
                     help="verify a path-list dataset instead of a directory")
+    sp.add_argument(
+        "--allow",
+        action="append",
+        metavar="GLOB",
+        help="tolerate drift on paths matching this glob (repeatable); if every "
+        "changed path matches an --allow glob, verify still exits 0; glob "
+        "matched against manifest-relative paths; * matches across /",
+    )
     sp.add_argument("--jobs", type=int, default=hashing.DEFAULT_JOBS,
                     help="concurrent hashing threads (default 4)")
     sp.add_argument("--json", action="store_true",
