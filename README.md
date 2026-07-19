@@ -157,6 +157,26 @@ framepin verify data/clips --against c29aa729c669     # exit 0 = intact
 framepin verify --from-list train_a.txt train_b.txt --against <version>
 ```
 
+Better: don't hardcode the version in CI config. `framepin pin` writes it to a
+one-line **pinfile** you commit next to your code, and `--against-file` reads
+it back — accepting an intentional data change becomes a normal reviewed
+commit, not a CI-config edit:
+
+```bash
+framepin pin data/clips                                # snapshot + write framepin.pin
+git add framepin.pin .framepin && git commit -m "pin dataset baseline"
+# in CI:
+framepin verify data/clips --against-file framepin.pin
+# data changed on purpose? re-pin and commit — the diff shows up in review:
+framepin pin data/clips
+```
+
+`pin` also takes `--from-list`, `--split`, `--file <path>` (default
+`framepin.pin`), and `--version <id>` to pin an already-stored version without
+re-hashing. Ready-made GitHub Actions workflows — including one that opens a
+baseline-update PR automatically when the data drifts — are in
+[`examples/ci/`](examples/ci/).
+
 Expected churn (say, labels get re-exported every week) doesn't have to break
 the build — allow-list it:
 
@@ -256,7 +276,7 @@ python3 examples/quickstart_demo.py
 ## Roadmap
 
 - remote manifest registry for teams
-- richer CI gate (`verify` + `--allow` ship today; next: baseline auto-update PRs)
+- richer CI gate (`verify --allow`, pinfiles and baseline auto-update PRs ship today)
 
 Feedback and issues very welcome — the niche (video/sequence ML data lineage) is
 exactly where this should earn its keep or die. Tell me where it falls short.

@@ -40,17 +40,44 @@ def _parse_splits(split_args):
     return splits
 
 
-def cmd_init(args) -> int:
-    repo = Repo.init(args.path)
-    print(f"initialized framepin store at {repo.store}")
-    return 0
+PINFILE_HEADER = "# framepin pinned dataset version — update via 'framepin pin'"
 
 
-def cmd_snapshot(args) -> int:
-    repo = Repo.open_or_init(".")
+def _write_pinfile(path: str, root: str) -> None:
+    """Write a one-line pinfile (plus comment header), replacing it atomically-ish."""
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(PINFILE_HEADER + "\n")
+        fh.write(root + "\n")
+    os.replace(tmp, path)
+
+
+def _read_pinfile(path: str) -> str:
+    """Return the version ref (full root or short prefix) recorded in a pinfile.
+
+    Raises ``OSError`` if the file cannot be read, or ``ValueError`` if it has
+    no non-comment, non-blank line.
+    """
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            return line
+    raise ValueError("no version line found")
+
+
+def _build_manifest(args, repo):
+    """Build a manifest from ``args`` (dataset dir or --from-list), honoring
+    --split/--fast/--jobs.
+
+    Returns ``(manifest, error_code)``: on failure ``manifest`` is ``None``,
+    an error has already been printed to stderr, and ``error_code`` should be
+    returned by the caller.
+    """
     split_globs = _parse_splits(args.split)
     if split_globs is None:
-        return 2
+        return None, 2
     if args.from_list:
         from .listfile import HashCache, snapshot_from_lists
 
@@ -65,7 +92,21 @@ def cmd_snapshot(args) -> int:
         man = snapshot(args.dataset, created_at=_now(), jobs=args.jobs, split_globs=split_globs)
     else:
         print("framepin: error: give a dataset directory or --from-list", file=sys.stderr)
-        return 2
+        return None, 2
+    return man, None
+
+
+def cmd_init(args) -> int:
+    repo = Repo.init(args.path)
+    print(f"initialized framepin store at {repo.store}")
+    return 0
+
+
+def cmd_snapshot(args) -> int:
+    repo = Repo.open_or_init(".")
+    man, err = _build_manifest(args, repo)
+    if err is not None:
+        return err
     repo.save_manifest(man)
     missing = sum(1 for f in man.files if f.hash == "missing:")
     if args.json:
@@ -95,6 +136,59 @@ def cmd_snapshot(args) -> int:
         print(f"  root: {man.root}")
         for f in man.files:
             print(f"  {hashing.short(f.hash)}  {f.size:>10}  {f.path}")
+    return 0
+
+
+def cmd_pin(args) -> int:
+    """Snapshot (or resolve an existing version) and write a one-line pinfile.
+
+    A pinfile is meant to be committed to git so CI's `verify --against-file`
+    picks up intentional dataset changes without editing CI config.
+    """
+    pinfile = args.file or "framepin.pin"
+    if args.version and (args.dataset or args.from_list):
+        print(
+            "framepin: error: give a dataset directory or --from-list, or "
+            "--version, not both",
+            file=sys.stderr,
+        )
+        return 2
+
+    did_snapshot = False
+    if args.version:
+        repo = Repo.discover(".")
+        man = repo.load_manifest(args.version)
+    elif args.dataset or args.from_list:
+        repo = Repo.open_or_init(".")
+        man, err = _build_manifest(args, repo)
+        if err is not None:
+            return err
+        repo.save_manifest(man)
+        did_snapshot = True
+    else:
+        print(
+            "framepin: error: give a dataset directory, --from-list, or --version",
+            file=sys.stderr,
+        )
+        return 2
+
+    _write_pinfile(pinfile, man.root)
+
+    if args.json:
+        print(json.dumps({"root": man.root, "short": man.short, "pinfile": pinfile}))
+        return 0
+
+    if did_snapshot:
+        missing = sum(1 for f in man.files if f.hash == "missing:")
+        print(f"snapshot {man.short}  ({man.file_count} files, {man.total_bytes} bytes)")
+        if missing:
+            print(f"  ⚠ {missing} referenced path(s) do not exist (recorded as missing)")
+        for name, info in man.splits.items():
+            print(
+                f"  split {name}  {hashing.short(info['root'])}  "
+                f"({info['file_count']} files, {info['total_bytes']} bytes)"
+            )
+    print(f"pinned {man.short}  -> {pinfile}")
     return 0
 
 
@@ -157,7 +251,17 @@ def cmd_log(args) -> int:
 def cmd_verify(args) -> int:
     """CI gate: exit 0 if the dataset still matches a pinned version, 3 on drift."""
     repo = Repo.discover(".")
-    pinned = repo.load_manifest(args.against)
+    against = args.against
+    if args.against_file:
+        try:
+            against = _read_pinfile(args.against_file)
+        except (OSError, ValueError) as e:
+            print(
+                f"framepin: error: pinfile '{args.against_file}': {e}",
+                file=sys.stderr,
+            )
+            return 2
+    pinned = repo.load_manifest(against)
     if args.from_list:
         from .listfile import HashCache, snapshot_from_lists
 
@@ -386,6 +490,49 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("-v", "--verbose", action="store_true")
     sp.set_defaults(func=cmd_snapshot)
 
+    sp = sub.add_parser(
+        "pin",
+        help="snapshot (or resolve) a dataset version and write a one-line pinfile for CI",
+    )
+    sp.add_argument("dataset", nargs="?", default=None)
+    sp.add_argument(
+        "--from-list",
+        nargs="+",
+        metavar="LIST_TXT",
+        help="dataset = these list files + every path they reference "
+        "(one path per line, # comments ok; multiple lists are deduped/unioned)",
+    )
+    sp.add_argument(
+        "--version",
+        metavar="VERSION",
+        help="pin an already-recorded dataset version instead of snapshotting "
+        "(full root or short prefix)",
+    )
+    sp.add_argument(
+        "--file",
+        metavar="PINFILE",
+        default=None,
+        help="pinfile path to write (default: framepin.pin)",
+    )
+    sp.add_argument(
+        "--fast",
+        action="store_true",
+        help="fingerprint referenced files by size+mtime instead of content "
+        "(fast for 100k+ files; take periodic full snapshots as anchors)",
+    )
+    sp.add_argument("--jobs", type=int, default=hashing.DEFAULT_JOBS,
+                    help="concurrent hashing threads (default 4)")
+    sp.add_argument(
+        "--split",
+        action="append",
+        metavar="NAME=GLOB",
+        help="record a per-split version id for paths matching GLOB (repeatable), "
+        "e.g. --split train=train/* --split val=val/*",
+    )
+    sp.add_argument("--json", action="store_true",
+                    help="machine-readable output (for agents/CI)")
+    sp.set_defaults(func=cmd_pin)
+
     sp = sub.add_parser("gc", help="prune dataset versions no run references (dry-run by default)")
     sp.add_argument("--apply", action="store_true", help="actually delete (default: dry-run)")
     sp.add_argument("--keep", type=int, default=5,
@@ -401,8 +548,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="CI gate: exit 0 if a dataset still matches a pinned version, 3 on drift",
     )
     sp.add_argument("dataset", nargs="?", default=None)
-    sp.add_argument("--against", required=True, metavar="VERSION",
+    against_group = sp.add_mutually_exclusive_group(required=True)
+    against_group.add_argument("--against", metavar="VERSION",
                     help="pinned dataset version (full root or short prefix)")
+    against_group.add_argument("--against-file", metavar="PINFILE",
+                    help="read the pinned dataset version from a pinfile "
+                    "(see `framepin pin`)")
     sp.add_argument("--from-list", nargs="+", metavar="LIST_TXT",
                     help="verify a path-list dataset instead of a directory")
     sp.add_argument(

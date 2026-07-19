@@ -1,0 +1,52 @@
+# Baseline auto-update: when the dataset drifts, open a PR that re-pins the
+# baseline instead of silently failing forever. A human approves the data
+# change by merging the PR — the drift stays visible in review history.
+#
+# Copy into .github/workflows/ and adjust the dataset path / schedule.
+# Requires: "Allow GitHub Actions to create pull requests" enabled in the
+# repository settings (Settings -> Actions -> General).
+
+name: update-dataset-baseline
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # weekly; or use workflow_dispatch to run on demand
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  repin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install framepin
+      - name: Check for drift
+        id: drift
+        run: |
+          if framepin verify data/clips --against-file framepin.pin; then
+            echo "drifted=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "drifted=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Re-pin baseline
+        if: steps.drift.outputs.drifted == 'true'
+        run: framepin pin data/clips
+      - name: Open baseline-update PR
+        if: steps.drift.outputs.drifted == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH="framepin/update-baseline-$(date +%Y%m%d)"
+          git checkout -b "$BRANCH"
+          git add framepin.pin .framepin
+          git -c user.name=github-actions -c user.email=actions@github.com \
+            commit -m "chore: update pinned dataset baseline"
+          git push origin "$BRANCH"
+          gh pr create --fill --title "Update pinned dataset baseline" \
+            --body "Dataset drifted from the pinned version. Merging accepts the new baseline; the exact change is in the .framepin/ manifest diff."

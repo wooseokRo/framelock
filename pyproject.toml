@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "framepin"
-version = "0.2.0"
+version = "0.3.0"
 description = "A lockfile for your video/sequence-ML datasets and experiments — reproduce any run without copying a single frame."
 readme = "README.md"
 requires-python = ">=3.9"

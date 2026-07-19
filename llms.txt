@@ -23,6 +23,7 @@ Core commands:
 - `framepin diff OLD NEW` — added / removed / modified / MOVED (a folder reorg of identical files shows as moves, not churn)
 - `framepin verify DIR --against VERSION` — CI gate: exit 0 if the dataset still matches the pinned version, exit 3 with a drift summary otherwise (also works with --from-list)
 - `framepin verify ... --allow GLOB` — tolerate expected churn: if every changed path matches an --allow glob (repeatable), the gate still passes; `--json` adds `"gate"` and `"allowed"`
+- `framepin pin DIR` — snapshot AND write the version id to a committed one-line pinfile (default framepin.pin); CI then runs `framepin verify DIR --against-file framepin.pin`, so accepting an intentional data change = re-run `framepin pin` + commit (no CI-config edit); GitHub Actions templates incl. auto baseline-update PR in examples/ci/
 - `framepin snapshot DIR --split train='train/*' --split val='val/*'` — per-split version ids for stratified datasets (pure metadata; top-level version id unchanged); verify drift then reports which splits changed
 - `framepin log [--json]` — list stored dataset versions, newest first
 - `framepin gc [--apply --keep N]` — prune versions no run references (dry-run by default)

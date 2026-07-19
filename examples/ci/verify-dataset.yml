@@ -1,0 +1,24 @@
+# CI gate: fail the build when the training dataset drifted from the pinned
+# version. Copy into .github/workflows/ and adjust the dataset path.
+#
+# Pin a baseline once (commits framepin.pin + the .framepin/ store):
+#   framepin pin data/clips
+#   git add framepin.pin .framepin && git commit -m "pin dataset baseline"
+
+name: verify-dataset
+
+on: [push, pull_request]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install framepin
+      - name: Verify dataset matches pinned version
+        run: framepin verify data/clips --against-file framepin.pin
+        # Expected churn (e.g. weekly label re-export) can be allow-listed:
+        #   framepin verify data/clips --against-file framepin.pin --allow 'labels/*'
