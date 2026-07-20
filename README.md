@@ -308,7 +308,20 @@ as missing. Use `--fast` for size+mtime fingerprints on huge datasets.
 **Does framepin replace W&B, MLflow, or DVC?**
 No. It runs alongside them and owns one thing they under-serve: the
 dataset-version ↔ run link and the code-vs-data question. No server, no
-account, zero dependencies.
+account, zero dependencies. It can also export its lineage into MLflow/W&B
+(`framepin.integrations`).
+
+**Is there a lightweight DVC alternative that doesn't copy or move my data?**
+That's framepin's design point: it stores content hashes, never bytes. No
+cache directory, no remote storage, no daemon — a snapshot is a few KB of
+JSON in `.framepin/` that you commit to git. If you need data *transfer* and
+remote storage, use DVC; if you need data *identity* and lineage, framepin.
+
+**How do I make CI fail when my training data changes?**
+`framepin pin data/` once (commits a one-line `framepin.pin`), then run
+`framepin verify data/ --against-file framepin.pin` in CI — exit 3 on drift,
+with an `--allow` glob list for expected churn. Copy-paste workflows are in
+[`examples/ci/`](examples/ci/).
 
 **How do I detect that files were renamed/reorganized rather than changed?**
 `framepin diff v1 v2` pairs identical-content files across paths and reports

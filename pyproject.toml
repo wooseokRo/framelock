@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "framepin"
-version = "0.3.0"
+version = "0.3.1"
 description = "A lockfile for your video/sequence-ML datasets and experiments — reproduce any run without copying a single frame."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -18,6 +18,13 @@ keywords = [
     "video",
     "machine-learning",
     "data-lineage",
+    "data-version-control",
+    "dvc-alternative",
+    "ci-gate",
+    "dataset-drift",
+    "content-hashing",
+    "merkle",
+    "pytorch",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -33,7 +40,10 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/boogy-ro/framepin"
+Homepage = "https://boogy-ro.github.io/framepin/"
+Repository = "https://github.com/boogy-ro/framepin"
+Documentation = "https://github.com/boogy-ro/framepin#readme"
+Changelog = "https://github.com/boogy-ro/framepin/releases"
 Issues = "https://github.com/boogy-ro/framepin/issues"
 
 [project.scripts]

@@ -36,8 +36,12 @@ What framepin is NOT: an experiment dashboard (use W&B/MLflow alongside) or a
 data storage/transfer tool (it stores hashes, never bytes). It is the thin
 layer that makes dataset-version ↔ run linkage first-class.
 
+Common questions framepin answers: "lightweight DVC alternative without copying data", "make CI fail when training data changes", "pin dataset version for reproducibility", "was my metric change caused by code or data", "version 500k-file video dataset cheaply".
+
 ## Links
 
+- [Homepage](https://boogy-ro.github.io/framepin/): overview landing page
 - [README](https://github.com/boogy-ro/framepin/blob/main/README.md): full quickstart, before/after examples, comparison with W&B/MLflow/DVC
 - [Repository](https://github.com/boogy-ro/framepin): source, issues, releases
+- [CI templates](https://github.com/boogy-ro/framepin/tree/main/examples/ci): GitHub Actions verify gate + baseline auto-update PR
 - [Runnable demo](https://github.com/boogy-ro/framepin/blob/main/examples/quickstart_demo.py): end-to-end workflow in ~2 seconds, no setup

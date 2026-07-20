@@ -473,8 +473,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--fast",
         action="store_true",
-        help="fingerprint referenced files by size+mtime instead of content "
-        "(fast for 100k+ files; take periodic full snapshots as anchors)",
+        help="with --from-list only: fingerprint referenced files by size+mtime "
+        "instead of content (fast for 100k+ files; take periodic full "
+        "snapshots as anchors)",
     )
     sp.add_argument("--jobs", type=int, default=hashing.DEFAULT_JOBS,
                     help="concurrent hashing threads (default 4)")
@@ -517,8 +518,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--fast",
         action="store_true",
-        help="fingerprint referenced files by size+mtime instead of content "
-        "(fast for 100k+ files; take periodic full snapshots as anchors)",
+        help="with --from-list only: fingerprint referenced files by size+mtime "
+        "instead of content (fast for 100k+ files; take periodic full "
+        "snapshots as anchors)",
     )
     sp.add_argument("--jobs", type=int, default=hashing.DEFAULT_JOBS,
                     help="concurrent hashing threads (default 4)")
