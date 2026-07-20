@@ -1,0 +1,653 @@
+<title>framepin — a lockfile for your ML datasets</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="framepin pins the exact data a training run saw and tells you, when a metric moves, whether it was the code or the data. Zero dependencies, no server, no data copies.">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --bg-raised: #f6f7f9;
+    --bg-code: #0d1117;
+    --text: #1b1f24;
+    --text-dim: #57606a;
+    --border: #d8dee4;
+    --accent: #6f42c1;
+    --accent-2: #0969da;
+    --warn: #c9510c;
+    --warn-bg: #fff3e8;
+    --good: #1a7f37;
+    --code-text: #c9d1d9;
+    --code-string: #a5d6ff;
+    --code-comment: #8b949e;
+    --code-kw: #ff7b72;
+    --code-fn: #d2a8ff;
+    --shadow: 0 1px 2px rgba(27,31,36,0.06), 0 4px 12px rgba(27,31,36,0.06);
+    --radius: 10px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117;
+      --bg-raised: #161b22;
+      --bg-code: #010409;
+      --text: #e6edf3;
+      --text-dim: #9198a1;
+      --border: #30363d;
+      --accent: #b992ff;
+      --accent-2: #79c0ff;
+      --warn: #ffa657;
+      --warn-bg: #2b1d0e;
+      --good: #56d364;
+      --code-text: #c9d1d9;
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.35);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #0d1117;
+    --bg-raised: #161b22;
+    --bg-code: #010409;
+    --text: #e6edf3;
+    --text-dim: #9198a1;
+    --border: #30363d;
+    --accent: #b992ff;
+    --accent-2: #79c0ff;
+    --warn: #ffa657;
+    --warn-bg: #2b1d0e;
+    --good: #56d364;
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.35);
+  }
+
+  :root[data-theme="light"] {
+    --bg: #ffffff;
+    --bg-raised: #f6f7f9;
+    --bg-code: #0d1117;
+    --text: #1b1f24;
+    --text-dim: #57606a;
+    --border: #d8dee4;
+    --accent: #6f42c1;
+    --accent-2: #0969da;
+    --warn: #c9510c;
+    --warn-bg: #fff3e8;
+    --good: #1a7f37;
+    --shadow: 0 1px 2px rgba(27,31,36,0.06), 0 4px 12px rgba(27,31,36,0.06);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--accent-2); }
+
+  .wrap {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 0 20px;
+  }
+
+  header.nav {
+    border-bottom: 1px solid var(--border);
+    padding: 16px 0;
+  }
+  header.nav .wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .brand {
+    font-weight: 700;
+    font-size: 1.05rem;
+    letter-spacing: -0.02em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .brand .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    flex: none;
+  }
+  nav.links { display: flex; gap: 18px; font-size: 0.9rem; }
+  nav.links a { color: var(--text-dim); text-decoration: none; }
+  nav.links a:hover { color: var(--text); }
+
+  .hero {
+    padding: 56px 0 40px;
+  }
+  .hero .kicker {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    margin: 0 0 14px;
+  }
+  .hero h1 {
+    font-size: clamp(1.7rem, 5vw, 2.6rem);
+    line-height: 1.15;
+    margin: 0 0 16px;
+    letter-spacing: -0.02em;
+  }
+  .hero h1 .hook {
+    color: var(--text-dim);
+    font-weight: 500;
+  }
+  .hero p.sub {
+    font-size: 1.08rem;
+    color: var(--text-dim);
+    max-width: 60ch;
+    margin: 0 0 26px;
+  }
+  .hero p.sub code {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0 4px;
+    font-size: 0.92em;
+  }
+
+  .cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 34px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    text-decoration: none;
+    border: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .btn-primary {
+    background: var(--text);
+    color: var(--bg);
+    border-color: var(--text);
+  }
+  .btn-secondary {
+    background: var(--bg-raised);
+    color: var(--text);
+  }
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 12px;
+    margin-bottom: 22px;
+  }
+  .status-badge .pulse {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--warn);
+    flex: none;
+  }
+
+  pre.code {
+    background: var(--bg-code);
+    color: var(--code-text);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    box-shadow: var(--shadow);
+    margin: 0 0 18px;
+    border: 1px solid var(--border);
+  }
+  pre.code code { font-family: "SF Mono", "Cascadia Code", Consolas, Menlo, monospace; }
+  .tok-comment { color: #8b949e; }
+  .tok-string { color: #a5d6ff; }
+  .tok-kw { color: #ff7b72; }
+  .tok-fn { color: #d2a8ff; }
+  .tok-num { color: #79c0ff; }
+  .tok-warn { color: #ffa657; font-weight: 700; }
+  .tok-good { color: #7ee787; }
+  .tok-prompt { color: #7ee787; }
+
+  section {
+    padding: 44px 0;
+    border-top: 1px solid var(--border);
+  }
+  section h2 {
+    font-size: 1.5rem;
+    letter-spacing: -0.01em;
+    margin: 0 0 8px;
+  }
+  section p.lead {
+    color: var(--text-dim);
+    max-width: 62ch;
+    margin: 0 0 26px;
+  }
+
+  .diff-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 640px) {
+    .diff-grid { grid-template-columns: 1fr; }
+  }
+  .diff-card h3 {
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    margin: 0 0 10px;
+  }
+  .diff-card.before h3 { color: var(--warn); }
+  .diff-card.after h3 { color: var(--good); }
+
+  .regress-box {
+    background: var(--warn-bg);
+    border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    margin-top: -4px;
+  }
+  .regress-box strong { color: var(--warn); }
+
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+  }
+  @media (max-width: 640px) {
+    .steps { grid-template-columns: 1fr; }
+  }
+  .step {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+  }
+  .step .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.78rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .step h3 {
+    margin: 0 0 6px;
+    font-size: 1.02rem;
+  }
+  .step code.cmd {
+    display: inline-block;
+    background: var(--bg-code);
+    color: var(--code-text);
+    border-radius: 5px;
+    padding: 2px 7px;
+    font-size: 0.82rem;
+    margin-bottom: 8px;
+  }
+  .step p {
+    margin: 0;
+    color: var(--text-dim);
+    font-size: 0.92rem;
+  }
+
+  .table-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 560px;
+    font-size: 0.88rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  thead th {
+    background: var(--bg-raised);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  .yes { color: var(--good); font-weight: 700; }
+  .no { color: var(--text-dim); }
+  .warn-cell { color: var(--warn); }
+
+  .note {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    margin-top: 16px;
+  }
+
+  .install-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: var(--bg-code);
+    color: var(--code-text);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    font-family: "SF Mono", "Cascadia Code", Consolas, Menlo, monospace;
+    font-size: 0.95rem;
+    flex-wrap: wrap;
+  }
+  .copy-hint {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  .cta {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 30px;
+  }
+  .cta h2 { margin-top: 0; }
+  form.email-form {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 18px;
+  }
+  form.email-form input[type="email"] {
+    flex: 1 1 240px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.95rem;
+  }
+  form.email-form button {
+    padding: 10px 18px;
+    border-radius: 8px;
+    border: 1px solid var(--text);
+    background: var(--text);
+    color: var(--bg);
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.95rem;
+  }
+  form.email-form .form-note {
+    width: 100%;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 28px 0 50px;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+  }
+  footer .wrap {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 12px;
+  }
+</style>
+
+<header class="nav">
+  <div class="wrap">
+    <div class="brand"><span class="dot"></span>framepin</div>
+    <nav class="links">
+      <a href="#how">How it works</a>
+      <a href="#compare">Compare</a>
+      <a href="#install">Install</a>
+      <a href="#get-it">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <span class="status-badge"><span class="pulse"></span>v0.1 alpha — snapshot / diff / track / regress work, tested</span>
+      <h1>A lockfile for your video/sequence-ML datasets.<br><span class="hook">When a metric moves: the code, or the data?</span></h1>
+      <p class="sub">
+        <code>framepin</code> pins the exact data a training run saw, links it to the run's
+        params/metrics/commit, and answers that question directly. Zero dependencies,
+        no server, no data copies — just JSON that commits cleanly to git.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#get-it">Star on GitHub</a>
+        <a class="btn btn-secondary" href="#install">pip install framepin</a>
+      </div>
+
+      <pre class="code"><code><span class="tok-prompt">$</span> framepin regress &lt;old_run&gt; &lt;new_run&gt; -m val_loss
+regress 02189c0fbd14 -&gt; ab09cc84a35a
+  val_loss: <span class="tok-num">0.21</span> -&gt; <span class="tok-num">0.28</span>  (&#916; +<span class="tok-num">0.07</span>)
+
+  <span class="tok-warn">&#9888; DATA CHANGED between these runs</span> — the dataset version differs.
+    A metric move here cannot be attributed to code alone.</code></pre>
+      <div class="regress-box">
+        <strong>That last line is the whole point.</strong> framepin separates "the code
+        regressed" from "the data changed under you."
+      </div>
+    </div>
+  </section>
+
+  <section id="problem">
+    <div class="wrap">
+      <h2>The problem</h2>
+      <p class="lead">If you train models on video or sequence data, this has happened to you.</p>
+      <ul>
+        <li>A run from three weeks ago had a better <code>val_loss</code>. Which dataset
+          version was it? You re-sampled frames and re-labeled twice since. <strong>Gone.</strong></li>
+        <li><code>val_loss</code> got worse after a change. Was it your code&nbsp;&hellip; or did
+          someone swap out 30% of the clips? <strong>Nobody can say quickly.</strong></li>
+        <li><code>wandb</code>/<code>mlflow</code> track the <em>run</em> but treat the dataset as
+          an opaque string. <code>dvc</code> versions the <em>data</em> but is heavy and lives
+          apart from your metrics. Neither answers <em>"is this run reproducible from these
+          exact bytes?"</em></li>
+      </ul>
+      <p class="lead" style="margin-bottom:0;">Video datasets are big, churn constantly, and get
+        reorganized — so a directory reshuffle looks like "half my data changed" in a naive diff.</p>
+    </div>
+  </section>
+
+  <section id="before-after">
+    <div class="wrap">
+      <h2>Before / after</h2>
+      <div class="diff-grid">
+        <div class="diff-card before">
+          <h3>Before — a string you hope is true</h3>
+          <pre class="code"><code>run.log({<span class="tok-string">"dataset"</span>: <span class="tok-string">"data/clips (v3?)"</span>,
+         <span class="tok-string">"val_loss"</span>: <span class="tok-num">0.21</span>})
+<span class="tok-comment"># 3 weeks later: what was v3? which
+# frames? was it re-labeled? &#129335;</span></code></pre>
+        </div>
+        <div class="diff-card after">
+          <h3>After — a content hash you can diff</h3>
+          <pre class="code"><code><span class="tok-kw">with</span> framepin.<span class="tok-fn">track</span>(name=<span class="tok-string">"baseline"</span>) <span class="tok-kw">as</span> run:
+    run.<span class="tok-fn">use_dataset</span>(<span class="tok-string">"data/clips"</span>)
+    <span class="tok-comment"># -&gt; version c29aa729c669</span>
+    run.<span class="tok-fn">log_metric</span>(<span class="tok-string">"val_loss"</span>, <span class="tok-num">0.21</span>)</code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <h2>How it works</h2>
+      <p class="lead">Four commands. Everything lives under <code>.framepin/</code> as plain,
+        sorted JSON — commit it like any other file.</p>
+      <div class="steps">
+        <div class="step">
+          <span class="num">1</span>
+          <h3>snapshot</h3>
+          <code class="cmd">framepin snapshot data/clips</code>
+          <p>Walks a directory, streams a SHA-256 over each file, and records a deterministic
+            manifest keyed by a Merkle root of <code>(path, content-hash)</code> pairs. Same bytes
+            &rarr; same version id, regardless of walk order or timestamps. Nothing is moved or
+            copied.</p>
+        </div>
+        <div class="step">
+          <span class="num">2</span>
+          <h3>diff</h3>
+          <code class="cmd">framepin diff &lt;v1&gt; &lt;v2&gt;</code>
+          <p>Classifies changes into added / removed / modified / <strong>moved</strong>, so a
+            reorg of identical clips reads as moves, not churn.</p>
+        </div>
+        <div class="step">
+          <span class="num">3</span>
+          <h3>track</h3>
+          <code class="cmd">framepin.track(...)</code>
+          <p>Python context manager that records a run's params, metrics, git commit, and the
+            dataset version(s) it consumed into <code>.framepin/runs/&lt;id&gt;.json</code>.</p>
+        </div>
+        <div class="step">
+          <span class="num">4</span>
+          <h3>regress</h3>
+          <code class="cmd">framepin regress &lt;a&gt; &lt;b&gt; -m metric</code>
+          <p>Compares two runs' metrics <em>and</em> their pinned dataset versions — the
+            code-vs-data answer, in one command.</p>
+        </div>
+      </div>
+      <p class="note">Also: <code>framepin init</code> (creates <code>.framepin/</code>),
+        <code>framepin runs</code> (every run + its data version), <code>framepin show &lt;run&gt;</code>
+        (full lineage: run &rarr; dataset version &rarr; files).</p>
+    </div>
+  </section>
+
+  <section id="compare">
+    <div class="wrap">
+      <h2>Why not W&amp;B / MLflow / DVC?</h2>
+      <p class="lead">framepin is deliberately small. It is <strong>not</strong> a full
+        experiment platform — it does the one thing those tools under-serve: making the dataset
+        version a first-class, reproducible, diffable part of every run. Use it alongside W&amp;B
+        if you like; framepin just owns the data-lineage question.</p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th></th><th>framepin</th><th>W&amp;B / MLflow</th><th>DVC</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Pins run &harr; exact dataset version</td>
+              <td class="yes">&#10003; first-class</td>
+              <td class="warn-cell">&#9888; manual string/artifact</td>
+              <td class="warn-cell">&#9888; separate from metrics</td>
+            </tr>
+            <tr>
+              <td>"Code vs data" regression answer</td>
+              <td class="yes">&#10003; <code>regress</code></td>
+              <td class="no">&mdash;</td>
+              <td class="no">&mdash;</td>
+            </tr>
+            <tr>
+              <td>Detects moved/renamed files</td>
+              <td class="yes">&#10003;</td>
+              <td class="no">&mdash;</td>
+              <td class="warn-cell">partial</td>
+            </tr>
+            <tr>
+              <td>Copies your data</td>
+              <td class="yes">never (hashes only)</td>
+              <td class="warn-cell">&#9888; artifacts</td>
+              <td class="warn-cell">&#10003; cache/remote</td>
+            </tr>
+            <tr>
+              <td>Server / account required</td>
+              <td class="yes">no</td>
+              <td class="warn-cell">&#9888; (or self-host)</td>
+              <td class="yes">no</td>
+            </tr>
+            <tr>
+              <td>Runtime dependencies</td>
+              <td class="yes">0</td>
+              <td class="no">many</td>
+              <td class="no">several</td>
+            </tr>
+            <tr>
+              <td>Git-friendly plain-JSON store</td>
+              <td class="yes">&#10003;</td>
+              <td class="no">&mdash;</td>
+              <td class="yes">&#10003; (pointers)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <h2>Install</h2>
+      <p class="lead">Pure standard library. Nothing else gets installed.</p>
+      <div class="install-box">
+        <span>$ pip install framepin</span>
+      </div>
+      <p class="copy-hint" style="margin-top:10px;">Requires Python &ge; 3.9. No third-party packages.</p>
+      <pre class="code" style="margin-top:18px;"><code><span class="tok-prompt">$</span> git clone https://github.com/boogy-ro/framepin
+<span class="tok-prompt">$</span> cd framepin
+<span class="tok-prompt">$</span> pip install -e .          <span class="tok-comment"># or just add to PYTHONPATH — no deps</span>
+<span class="tok-prompt">$</span> python -m unittest discover -s tests</code></pre>
+    </div>
+  </section>
+
+  <section id="get-it">
+    <div class="wrap">
+      <div class="cta">
+        <h2>Try it, break it, tell me where it falls short</h2>
+        <p class="lead" style="margin-bottom:0;">
+          v0.3 — snapshot/diff/track/regress plus a CI gate with allow-lists, committed pinfiles,
+          per-split manifests, and MLflow/W&amp;B export. APIs may still shift before 1.0. Video/sequence ML data lineage is a narrow niche; feedback decides
+          whether this is worth building further.
+        </p>
+        <div class="cta-row" style="margin-top:22px;">
+          <a class="btn btn-primary" href="https://github.com/boogy-ro/framepin" target="_blank" rel="noopener">&#9733; Star on GitHub</a>
+          <a class="btn btn-secondary" href="https://github.com/boogy-ro/framepin/issues" target="_blank" rel="noopener">Open an issue</a>
+        </div>
+
+        <a class="btn btn-secondary" href="https://pypi.org/project/framepin/" target="_blank" rel="noopener">pip install framepin</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>framepin — MIT licensed.</span>
+    <span><a href="https://github.com/boogy-ro/framepin">github.com/boogy-ro/framepin</a></span>
+  </div>
+</footer>
